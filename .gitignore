@@ -1,0 +1,76 @@
+# ============================================================
+# rknn-yolo 项目 Git 忽略配置
+# ============================================================
+
+# ---------- 编译产物 ----------
+build/
+cmake-build-*/
+*.o
+*.obj
+*.a
+*.so
+*.so.*
+*.dylib
+*.dll
+*.exe
+
+# ---------- 可执行文件 ----------
+rknn_yolo_demo
+yolov8_stream_img
+tools/test_alarm
+
+# ---------- CMake 生成文件 ----------
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+compile_commands.json
+CTestTestfile.cmake
+Testing/
+
+# ---------- 模型文件（体积大，建议单独管理） ----------
+*.rknn
+!model/.gitkeep
+
+# ---------- 运行时输出 ----------
+output/
+out.h264
+out.h264.*
+out.png
+out.jpg
+*.log
+
+# ---------- 临时/备份文件 ----------
+*~
+*.bak
+*.tmp
+*.swp
+*.swo
+*.orig
+*.copy.json
+*.copy
+
+# ---------- IDE / 编辑器 ----------
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+.vs/
+*.user
+*.suo
+
+# ---------- OS 生成文件 ----------
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---------- 核心文件保留说明 ----------
+# 以下文件建议保留在仓库中：
+# - CMakeLists.txt
+# - README.md
+# - config.json
+# - src/ 全部源码
+# - utils/ 工具库源码
+# - tools/*.cpp 测试工具源码
+# - 3rdparty/ 中当前平台需要的头文件和小体积依赖
+# - model/ 中的标签文件（*.txt）和示例图片（bus.jpg）
