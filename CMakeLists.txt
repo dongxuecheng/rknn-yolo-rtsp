@@ -7,7 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # 设置库架构
 set(LIB_ARCH "aarch64")
-set(TARGET_SOC "rk356X")
+set(TARGET_SOC "rk3588")
 
 # 配置 OpenCV
 set(OpenCV_DIR ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/opencv/opencv-linux-${LIB_ARCH}/share/OpenCV)
