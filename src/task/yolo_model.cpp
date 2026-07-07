@@ -8,6 +8,8 @@
 #include "yolov8_pose/yolov8_pose_postprocess.h"
 #include "yolo26/yolo26.h"
 #include "yolo26/yolo26_postprocess.h"
+#include "yolov5/yolov5.h"
+#include "yolov5/yolov5_postprocess.h"
 #include "clip_text/clip_text.h"
 
 YoloModel::YoloModel()
@@ -54,7 +56,7 @@ int YoloModel::load_model(const char *model_path, ModelType type)
         }
         yolov8_pose_init_post_process();
     }
-    else if (model_type_ == ModelType::YOLO26N)
+    else if (model_type_ == ModelType::YOLO26)
     {
         ret = init_yolo26_model(model_path, &rknn_app_ctx_);
         if (ret != 0)
@@ -62,7 +64,15 @@ int YoloModel::load_model(const char *model_path, ModelType type)
             printf("init_yolo26_model fail! ret=%d model_path=%s\n", ret, model_path);
             return ret;
         }
-        yolo26_init_post_process();
+    }
+    else if (model_type_ == ModelType::YOLOV5)
+    {
+        ret = init_yolov5_model(model_path, &rknn_app_ctx_);
+        if (ret != 0)
+        {
+            printf("init_yolov5_model fail! ret=%d model_path=%s\n", ret, model_path);
+            return ret;
+        }
     }
     return 0;
 }
@@ -171,9 +181,13 @@ int YoloModel::infer(cv::Mat img, object_detect_result_list &od_results)
     {
         return infer_yolov8_pose(img, od_results);
     }
-    else if (model_type_ == ModelType::YOLO26N)
+    else if (model_type_ == ModelType::YOLO26)
     {
         return infer_yolo26(img, od_results);
+    }
+    else if (model_type_ == ModelType::YOLOV5)
+    {
+        return infer_yolov5(img, od_results);
     }
     else
     {
@@ -332,10 +346,13 @@ void YoloModel::release()
         release_yolov8_pose_model(&rknn_app_ctx_);
         yolov8_pose_deinit_post_process();
     }
-    else if (model_type_ == ModelType::YOLO26N)
+    else if (model_type_ == ModelType::YOLO26)
     {
         release_yolo26_model(&rknn_app_ctx_);
-        yolo26_deinit_post_process();
+    }
+    else if (model_type_ == ModelType::YOLOV5)
+    {
+        release_yolov5_model(&rknn_app_ctx_);
     }
 }
 
@@ -365,4 +382,49 @@ std::string YoloModel::getClassName(int cls_id)
     {
         return "Unknown";
     }
+}
+int YoloModel::infer_yolov5(cv::Mat img, object_detect_result_list &od_results)
+{
+    int ret;
+    image_buffer_t src_image;
+    memset(&src_image, 0, sizeof(image_buffer_t));
+
+    ret = convert_to_image_buffer(img, src_image);
+    if (ret != 0)
+    {
+        printf("Failed to convert cv::Mat to image_buffer_t\n");
+        return ret;
+    }
+
+    yolov5_object_detect_result_list y5_results;
+    memset(&y5_results, 0, sizeof(yolov5_object_detect_result_list));
+
+    ret = inference_yolov5_model(&rknn_app_ctx_, &src_image, &y5_results, object_threshold_, nms_threshold_);
+    if (ret != 0)
+    {
+        printf("inference_yolov5_model fail! ret=%d\n", ret);
+        free(src_image.virt_addr);
+        return ret;
+    }
+
+    // 转换结果类型：yolov5 -> 通用格式
+    memset(&od_results, 0, sizeof(object_detect_result_list));
+    int count = y5_results.count;
+    if (count > OBJ_NUMB_MAX_SIZE)
+    {
+        count = OBJ_NUMB_MAX_SIZE;
+    }
+    od_results.count = count;
+    for (int i = 0; i < count; i++)
+    {
+        od_results.results[i].box = y5_results.results[i].box;
+        od_results.results[i].prop = y5_results.results[i].prop;
+        od_results.results[i].cls_id = y5_results.results[i].cls_id;
+    }
+
+    if (src_image.virt_addr != NULL)
+    {
+        free(src_image.virt_addr);
+    }
+    return 0;
 }

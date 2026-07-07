@@ -16,8 +16,8 @@ cmake-build-*/
 
 # ---------- 可执行文件 ----------
 rknn_yolo_demo
-yolov8_stream_img
-tools/test_alarm
+rknn_yolo_stream
+test_image
 
 # ---------- CMake 生成文件 ----------
 CMakeCache.txt
@@ -33,11 +33,19 @@ Testing/
 !model/.gitkeep
 
 # ---------- 运行时输出 ----------
+# 算法日志与报警图片（运行期动态生成）
+logs/
+alerts/
+# 旧版输出目录兼容
 output/
+# 视频/图片临时输出
 out.h264
 out.h264.*
+out.h265
+out.h265.*
 out.png
 out.jpg
+out_test_image.png
 *.log
 
 # ---------- 临时/备份文件 ----------
@@ -69,6 +77,7 @@ desktop.ini
 # - CMakeLists.txt
 # - README.md
 # - config.json
+# - algorithms.json
 # - src/ 全部源码
 # - utils/ 工具库源码
 # - tools/*.cpp 测试工具源码

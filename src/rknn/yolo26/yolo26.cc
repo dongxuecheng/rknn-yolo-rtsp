@@ -35,7 +35,7 @@ int init_yolo26_model(const char *model_path, rknn_app_context_t *app_ctx)
 {
     int ret;
     int model_len = 0;
-    char *model;
+    char *model = NULL;
     rknn_context ctx = 0;
 
     model_len = read_data_from_file(model_path, &model);
@@ -46,18 +46,20 @@ int init_yolo26_model(const char *model_path, rknn_app_context_t *app_ctx)
     }
 
     ret = rknn_init(&ctx, model, model_len, 0, NULL);
-    free(model);
     if (ret < 0)
     {
         printf("rknn_init fail! ret=%d\n", ret);
+        free(model);
         return -1;
     }
+    free(model);
 
     rknn_input_output_num io_num;
     ret = rknn_query(ctx, RKNN_QUERY_IN_OUT_NUM, &io_num, sizeof(io_num));
     if (ret != RKNN_SUCC)
     {
         printf("rknn_query fail! ret=%d\n", ret);
+        rknn_destroy(ctx);
         return -1;
     }
     printf("model input num: %d, output num: %d\n", io_num.n_input, io_num.n_output);
@@ -72,6 +74,7 @@ int init_yolo26_model(const char *model_path, rknn_app_context_t *app_ctx)
         if (ret != RKNN_SUCC)
         {
             printf("rknn_query fail! ret=%d\n", ret);
+            rknn_destroy(ctx);
             return -1;
         }
         dump_tensor_attr(&(input_attrs[i]));
@@ -87,6 +90,7 @@ int init_yolo26_model(const char *model_path, rknn_app_context_t *app_ctx)
         if (ret != RKNN_SUCC)
         {
             printf("rknn_query fail! ret=%d\n", ret);
+            rknn_destroy(ctx);
             return -1;
         }
         dump_tensor_attr(&(output_attrs[i]));

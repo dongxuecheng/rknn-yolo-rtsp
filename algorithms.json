@@ -1,0 +1,84 @@
+{
+    "global": {
+        "upload_url": "http://36.7.84.146:28801/open/api/operate/upload",
+        "level_id": 1,
+        "log_dir": "/root/yaoan/rknn-yolo/logs",
+        "alert_image_dir": "/root/yaoan/rknn-yolo/alerts",
+        "upload_queue_size": 10,
+        "upload_timeout_seconds": 10
+    },
+    "algorithms": [
+        {
+            "id": "no_helmet",
+            "enabled": true,
+            "algorithm_code": "0",
+            "conf_threshold": 0.45,
+            "cooldown_seconds": 60,
+            "nvr_ip": "172.16.21.31",
+            "channel": "1",
+            "related_classes": {
+                "person_model": "yolo26",
+                "head_model": "yolov5",
+                "person_class": "person",
+                "head_class": "head",
+                "helmet_class": "helmet"
+            },
+            "logic": "person_with_head_no_helmet"
+        },
+        {
+            "id": "phone_in_zone",
+            "enabled": true,
+            "algorithm_code": "52",
+            "conf_threshold": 0.45,
+            "cooldown_seconds": 60,
+            "nvr_ip": "172.16.21.31",
+            "channel": "1",
+            "fence_id": "whole_frame",
+            "related_classes": {
+                "person_model": "yolo26",
+                "phone_model": "yolo11",
+                "person_class": "person",
+                "phone_class": "phone"
+            },
+            "logic": "phone_and_person_in_zone"
+        },
+        {
+            "id": "person_intrusion",
+            "enabled": true,
+            "algorithm_code": "123",
+            "conf_threshold": 0.45,
+            "cooldown_seconds": 60,
+            "nvr_ip": "172.16.21.31",
+            "channel": "1",
+            "fence_id": "whole_frame",
+            "related_classes": {
+                "person_model": "yolo26",
+                "person_class": "person"
+            },
+            "logic": "person_in_zone"
+        },
+        {
+            "id": "absence",
+            "enabled": true,
+            "algorithm_code": "44",
+            "conf_threshold": 0.45,
+            "cooldown_seconds": 60,
+            "nvr_ip": "172.16.21.31",
+            "channel": "1",
+            "fence_id": "whole_frame",
+            "absence_seconds": 10,
+            "related_classes": {
+                "person_model": "yolo26",
+                "person_class": "person"
+            },
+            "logic": "no_person_in_zone_for_seconds"
+        }
+    ],
+    "fences": [
+        {
+            "id": "whole_frame",
+            "full_frame": true,
+            "points": []
+        }
+    ]
+}

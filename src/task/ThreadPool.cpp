@@ -43,13 +43,20 @@ ThreadPool::~ThreadPool()
     condition.notify_all();  // 通知所有线程退出
     for (std::thread &worker : workers)
     {
-        worker.join();  // 等待每个线程完成
+        if (worker.joinable()) {
+            worker.join();  // 等待每个线程完成
+        }
     }
 }
 
 bool ThreadPool::submit(std::function<void()> task)
 {
     std::unique_lock<std::mutex> lock(queueMutex);
+
+    // 如果线程池已停止，丢弃任务
+    if (stop) {
+        return false;
+    }
 
     // 如果队列已满，丢弃任务
     if (taskQueue.size() >= maxQueueSize)

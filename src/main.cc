@@ -74,6 +74,10 @@ int main(int argc, char **argv)
         // goto out;
     }
 
+    // Reload labels with actual class count after model init
+    deinit_post_process();
+    init_post_process(rknn_app_ctx.num_classes);
+
     image_buffer_t src_image;
     memset(&src_image, 0, sizeof(image_buffer_t));
     ret = read_image(image_path, &src_image);

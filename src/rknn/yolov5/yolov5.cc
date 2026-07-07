@@ -11,13 +11,13 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#include "conf/Config.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
 
-#include "yolov8.h"
+#include "yolov5.h"
 #include "common.h"
 #include "file_utils.h"
 #include "image_utils.h"
@@ -31,7 +31,7 @@ static void dump_tensor_attr(rknn_tensor_attr *attr)
            get_qnt_type_string(attr->qnt_type), attr->zp, attr->scale);
 }
 
-int init_yolov8_model(const char *model_path, rknn_app_context_t *app_ctx)
+int init_yolov5_model(const char *model_path, rknn_app_context_t *app_ctx)
 {
     int ret;
     int model_len = 0;
@@ -104,7 +104,7 @@ int init_yolov8_model(const char *model_path, rknn_app_context_t *app_ctx)
     app_ctx->rknn_ctx = ctx;
 
     // TODO
-    if (output_attrs[0].qnt_type == RKNN_TENSOR_QNT_AFFINE_ASYMMETRIC && output_attrs[0].type == RKNN_TENSOR_INT8)
+    if (output_attrs[0].qnt_type == RKNN_TENSOR_QNT_AFFINE_ASYMMETRIC && output_attrs[0].type != RKNN_TENSOR_FLOAT16)
     {
         app_ctx->is_quant = true;
     }
@@ -136,37 +136,32 @@ int init_yolov8_model(const char *model_path, rknn_app_context_t *app_ctx)
     printf("model input height=%d, width=%d, channel=%d\n",
            app_ctx->model_height, app_ctx->model_width, app_ctx->model_channel);
 
-    // Auto-detect num_classes for YOLOv8/YOLO11 multi-branch format
+    // Auto-detect num_classes for YOLOv5 multi-branch format
     app_ctx->num_classes = 0;
     if (io_num.n_output > 1)
     {
-        // 9-output native format: box(64) + cls(nc) + score_sum(1) per branch
-        // score tensor is output index 1, its NCHW channel dim is num_classes
-        int nc = output_attrs[1].dims[1];
-        if (nc <= 0)
-        {
-            nc = output_attrs[1].dims[3]; // fallback for NHWC
-        }
-        app_ctx->num_classes = nc;
-        printf("yolo11/yolov8 auto-detected num_classes=%d from score tensor channel %d\n", app_ctx->num_classes, nc);
+        // Format B: [1, 3*(5+nc), gh, gw]  => nc = channel/3 - 5
+        int ch = output_attrs[0].dims[1];
+        app_ctx->num_classes = ch / 3 - 5;
+        printf("yolov5 auto-detected num_classes=%d from output channel %d\n", app_ctx->num_classes, ch);
     }
     else
     {
-        // Single-output end-to-end format [1, 4+nc, num_anchors]
-        int box_len = output_attrs[0].dims[1];
-        app_ctx->num_classes = box_len - 4;
-        printf("yolo11/yolov8 auto-detected num_classes=%d from box_len %d\n", app_ctx->num_classes, box_len);
+        // Format A: [1, N, 5+nc]  => nc = box_len - 5
+        int box_len = output_attrs[0].dims[2];
+        app_ctx->num_classes = box_len - 5;
+        printf("yolov5 auto-detected num_classes=%d from box_len %d\n", app_ctx->num_classes, box_len);
     }
     if (app_ctx->num_classes <= 0)
     {
-        printf("WARNING: failed to auto-detect num_classes, fallback to %d\n", OBJ_CLASS_NUM);
-        app_ctx->num_classes = OBJ_CLASS_NUM;
+        printf("WARNING: failed to auto-detect num_classes, fallback to %d\n", YOLOV5_OBJ_CLASS_NUM_DEFAULT);
+        app_ctx->num_classes = YOLOV5_OBJ_CLASS_NUM_DEFAULT;
     }
 
     return 0;
 }
 
-int release_yolov8_model(rknn_app_context_t *app_ctx)
+int release_yolov5_model(rknn_app_context_t *app_ctx)
 {
     if (app_ctx->input_attrs != NULL)
     {
@@ -186,15 +181,15 @@ int release_yolov8_model(rknn_app_context_t *app_ctx)
     return 0;
 }
 
-int inference_yolov8_model(rknn_app_context_t *app_ctx, image_buffer_t *img, object_detect_result_list *od_results, float conf_threshold, float nms_threshold)
+int inference_yolov5_model(rknn_app_context_t *app_ctx, image_buffer_t *img, yolov5_object_detect_result_list *od_results, float conf_threshold, float nms_threshold)
 {
     int ret;
     image_buffer_t dst_img;
     letterbox_t letter_box;
     rknn_input inputs[app_ctx->io_num.n_input];
     rknn_output outputs[app_ctx->io_num.n_output];
-    float nms_thresh = (nms_threshold > 0.0f) ? nms_threshold : Config::getInstance().getNmsThreshold();
-    float box_conf_thresh = (conf_threshold > 0.0f) ? conf_threshold : Config::getInstance().getObjectThreshold();
+    float box_conf_thresh = (conf_threshold > 0.0f) ? conf_threshold : YOLOV5_BOX_THRESH;
+    float nms_thresh = (nms_threshold > 0.0f) ? nms_threshold : YOLOV5_NMS_THRESH;
     int bg_color = 114;
 
     if ((!app_ctx) || !(img) || (!od_results))
@@ -243,7 +238,7 @@ int inference_yolov8_model(rknn_app_context_t *app_ctx, image_buffer_t *img, obj
     }
 
     // Run
-//    printf("rknn_run\n");
+    printf("rknn_run\n");
     ret = rknn_run(app_ctx->rknn_ctx, nullptr);
     if (ret < 0)
     {
@@ -256,7 +251,9 @@ int inference_yolov8_model(rknn_app_context_t *app_ctx, image_buffer_t *img, obj
     for (int i = 0; i < app_ctx->io_num.n_output; i++)
     {
         outputs[i].index = i;
-        outputs[i].want_float = (!app_ctx->is_quant);
+        // Always request float output: the single-output postprocess reads
+        // dequantized float32 regardless of whether the model is quantized.
+        outputs[i].want_float = 1;
     }
     ret = rknn_outputs_get(app_ctx->rknn_ctx, app_ctx->io_num.n_output, outputs, NULL);
     if (ret < 0)
@@ -266,7 +263,7 @@ int inference_yolov8_model(rknn_app_context_t *app_ctx, image_buffer_t *img, obj
     }
 
     // Post Process
-    post_process(app_ctx, outputs, &letter_box, box_conf_thresh, nms_thresh, od_results);
+    yolov5_post_process(app_ctx, outputs, &letter_box, box_conf_thresh, nms_thresh, od_results, app_ctx->num_classes);
 
     // Remeber to release rknn output
     rknn_outputs_release(app_ctx->rknn_ctx, app_ctx->io_num.n_output, outputs);

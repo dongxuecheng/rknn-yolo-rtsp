@@ -16,7 +16,8 @@ enum class ModelType {
     YOLO11,
     YOLO_WORLD,
     YOLOV8_POSE,
-    YOLO26N
+    YOLO26,
+    YOLOV5
 };
 
 class YoloModel {
@@ -30,10 +31,13 @@ public:
     int infer(cv::Mat img, object_detect_result_list &od_results); // 执行推理，接收 cv::Mat 图像
     void release(); // 释放资源
     std::string getClassName(int cls_id);
+    const std::vector<std::string>& getClassNames() const { return class_names_; }
     ModelType getModelType() const { return model_type_; }
 
     // 设置该模型的类别名称（用于自定义模型，替代全局Config的classes）
     void setClassNames(const std::vector<std::string>& names) { class_names_ = names; }
+    // 设置该模型的实际类别数（覆盖自动检测，避免硬编码80类）
+    void setNumClasses(int num_classes) { if (num_classes > 0) rknn_app_ctx_.num_classes = num_classes; }
     // 设置该模型的独立阈值
     void setThresholds(float obj_thresh, float nms_thresh) { object_threshold_ = obj_thresh; nms_threshold_ = nms_thresh; }
 
@@ -55,6 +59,7 @@ private:
     int infer_yolo_world(cv::Mat img, object_detect_result_list &od_results);
     int infer_yolov8_pose(cv::Mat img, object_detect_result_list &od_results);
     int infer_yolo26(cv::Mat img, object_detect_result_list &od_results);
+    int infer_yolov5(cv::Mat img, object_detect_result_list &od_results);
 };
 
 #endif // YOLO_MODEL_H

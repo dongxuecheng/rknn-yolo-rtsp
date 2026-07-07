@@ -46,6 +46,7 @@ typedef struct {
     int model_channel;
     int model_width;
     int model_height;
+    int num_classes;       // 模型实际类别数（自定义模型使用）
     bool is_quant;
 } rknn_app_context_t;
 

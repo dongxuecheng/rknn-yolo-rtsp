@@ -76,7 +76,7 @@ int yolo26_post_process(rknn_app_context_t *app_ctx, void *outputs, letterbox_t 
 
     memset(od_results, 0, sizeof(yolo26_object_detect_result_list));
 
-    // yolo26n has single output: [1, 84, 8400]
+    // yolo26 has single output: [1, 84, 8400]
     if (app_ctx->io_num.n_output != 1) {
         printf("yolo26_post_process: expected 1 output, got %d\n", app_ctx->io_num.n_output);
         return -1;
@@ -135,7 +135,7 @@ int yolo26_post_process(rknn_app_context_t *app_ctx, void *outputs, letterbox_t 
     std::sort(candidates.begin(), candidates.end(),
               [](const Candidate &a, const Candidate &b) { return a.score > b.score; });
 
-    // NMS (yolo26n still produces duplicated boxes in practice)
+    // NMS (yolo26 still produces duplicated boxes in practice)
     float nms_thresh = (nms_threshold > 0.0f) ? nms_threshold : YOLO26_NMS_THRESH;
     std::vector<bool> suppressed(candidates.size(), false);
 

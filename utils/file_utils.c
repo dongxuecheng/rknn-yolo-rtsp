@@ -31,6 +31,7 @@ int read_data_from_file(const char *path, char **out_data)
     FILE *fp = fopen(path, "rb");
     if(fp == NULL) {
         printf("fopen %s fail!\n", path);
+        *out_data = NULL;
         return -1;
     }
     fseek(fp, 0, SEEK_END);
@@ -42,6 +43,7 @@ int read_data_from_file(const char *path, char **out_data)
         printf("fread %s fail!\n", path);
         free(data);
         fclose(fp);
+        *out_data = NULL;
         return -1;
     }
     if(fp) {

@@ -21,11 +21,13 @@
 #include <string.h>
 #include <sys/time.h>
 
+#include <cmath>
 #include <set>
 #include <vector>
+#include <algorithm>
 #define LABEL_NALE_TXT_PATH "./model/coco_80_labels_list.txt"
 
-static char *labels[OBJ_CLASS_NUM];
+static char *labels[OBJ_CLASS_NUM_MAX];
 
 inline static int clamp(float val, int min, int max) { return val > min ? (val < max ? val : max) : min; }
 
@@ -89,10 +91,10 @@ static int readLines(const char *fileName, char *lines[], int max_line)
     return i;
 }
 
-static int loadLabelName(const char *locationFilename, char *label[])
+static int loadLabelName(const char *locationFilename, char *label[], int max_line)
 {
     printf("load lable %s\n", locationFilename);
-    readLines(locationFilename, label, OBJ_CLASS_NUM);
+    readLines(locationFilename, label, max_line);
     return 0;
 }
 
@@ -225,7 +227,7 @@ static void compute_dfl(float* tensor, int dfl_len, float* box){
 static int process_u8(uint8_t *box_tensor, int32_t box_zp, float box_scale,
                       uint8_t *score_tensor, int32_t score_zp, float score_scale,
                       uint8_t *score_sum_tensor, int32_t score_sum_zp, float score_sum_scale,
-                      int grid_h, int grid_w, int stride, int dfl_len,
+                      int grid_h, int grid_w, int stride, int dfl_len, int num_classes,
                       std::vector<float> &boxes,
                       std::vector<float> &objProbs,
                       std::vector<int> &classId,
@@ -253,7 +255,7 @@ static int process_u8(uint8_t *box_tensor, int32_t box_zp, float box_scale,
             }
 
             uint8_t max_score = -score_zp;
-            for (int c = 0; c < OBJ_CLASS_NUM; c++)
+            for (int c = 0; c < num_classes; c++)
             {
                 if ((score_tensor[offset] > score_thres_u8) && (score_tensor[offset] > max_score))
                 {
@@ -300,7 +302,7 @@ static int process_u8(uint8_t *box_tensor, int32_t box_zp, float box_scale,
 static int process_i8(int8_t *box_tensor, int32_t box_zp, float box_scale,
                       int8_t *score_tensor, int32_t score_zp, float score_scale,
                       int8_t *score_sum_tensor, int32_t score_sum_zp, float score_sum_scale,
-                      int grid_h, int grid_w, int stride, int dfl_len,
+                      int grid_h, int grid_w, int stride, int dfl_len, int num_classes,
                       std::vector<float> &boxes, 
                       std::vector<float> &objProbs, 
                       std::vector<int> &classId, 
@@ -326,7 +328,7 @@ static int process_i8(int8_t *box_tensor, int32_t box_zp, float box_scale,
             }
 
             int8_t max_score = -score_zp;
-            for (int c= 0; c< OBJ_CLASS_NUM; c++){
+            for (int c= 0; c< num_classes; c++){
                 if ((score_tensor[offset] > score_thres_i8) && (score_tensor[offset] > max_score))
                 {
                     max_score = score_tensor[offset];
@@ -368,7 +370,7 @@ static int process_i8(int8_t *box_tensor, int32_t box_zp, float box_scale,
 }
 
 static int process_fp32(float *box_tensor, float *score_tensor, float *score_sum_tensor, 
-                        int grid_h, int grid_w, int stride, int dfl_len,
+                        int grid_h, int grid_w, int stride, int dfl_len, int num_classes,
                         std::vector<float> &boxes, 
                         std::vector<float> &objProbs, 
                         std::vector<int> &classId, 
@@ -391,7 +393,7 @@ static int process_fp32(float *box_tensor, float *score_tensor, float *score_sum
             }
 
             float max_score = 0;
-            for (int c= 0; c< OBJ_CLASS_NUM; c++){
+            for (int c= 0; c< num_classes; c++){
                 if ((score_tensor[offset] > threshold) && (score_tensor[offset] > max_score))
                 {
                     max_score = score_tensor[offset];
@@ -437,7 +439,7 @@ static int process_fp32(float *box_tensor, float *score_tensor, float *score_sum
 static int process_i8_rv1106(int8_t *box_tensor, int32_t box_zp, float box_scale,
                              int8_t *score_tensor, int32_t score_zp, float score_scale,
                              int8_t *score_sum_tensor, int32_t score_sum_zp, float score_sum_scale,
-                             int grid_h, int grid_w, int stride, int dfl_len,
+                             int grid_h, int grid_w, int stride, int dfl_len, int num_classes,
                              std::vector<float> &boxes,
                              std::vector<float> &objProbs,
                              std::vector<int> &classId,
@@ -461,8 +463,8 @@ static int process_i8_rv1106(int8_t *box_tensor, int32_t box_zp, float box_scale
             }
 
             int8_t max_score = -score_zp;
-            offset = offset * OBJ_CLASS_NUM;
-            for (int c = 0; c < OBJ_CLASS_NUM; c++) {
+            offset = offset * num_classes;
+            for (int c = 0; c < num_classes; c++) {
                 if ((score_tensor[offset + c] > score_thres_i8) && (score_tensor[offset + c] > max_score)) {
                     max_score = score_tensor[offset + c]; //80类 [1, 80, 80, 80] 3588NCHW 1106NHWC
                     max_class_id = c;
@@ -522,13 +524,26 @@ int post_process(rknn_app_context_t *app_ctx, void *outputs, letterbox_t *letter
 
     memset(od_results, 0, sizeof(object_detect_result_list));
 
-    // default 3 branch
+    int num_classes = (app_ctx->num_classes > 0) ? app_ctx->num_classes : OBJ_CLASS_NUM;
+
+    // 单输出端到端格式目前不支持，安全返回 0 检测，避免越界崩溃
+    if (app_ctx->io_num.n_output == 1)
+    {
+        static bool warned = false;
+        if (!warned) {
+            printf("WARNING: yolo11/yolov8 single-output end-to-end format is not supported, skipping detection.\n");
+            warned = true;
+        }
+    }
+    else
+    {
+        // default 3 branch
 #ifdef RKNPU1
-    int dfl_len = app_ctx->output_attrs[0].dims[2] / 4;
+        int dfl_len = app_ctx->output_attrs[0].dims[2] / 4;
 #else
-    int dfl_len = app_ctx->output_attrs[0].dims[1] /4;
+        int dfl_len = app_ctx->output_attrs[0].dims[1] /4;
 #endif
-    int output_per_branch = app_ctx->io_num.n_output / 3;
+        int output_per_branch = app_ctx->io_num.n_output / 3;
     for (int i = 0; i < 3; i++)
     {
 #if defined(RV1106_1103)
@@ -551,7 +566,7 @@ int post_process(rknn_app_context_t *app_ctx, void *outputs, letterbox_t *letter
             validCount += process_i8_rv1106((int8_t *)_outputs[box_idx]->virt_addr, app_ctx->output_attrs[box_idx].zp, app_ctx->output_attrs[box_idx].scale,
                                 (int8_t *)_outputs[score_idx]->virt_addr, app_ctx->output_attrs[score_idx].zp,
                                 app_ctx->output_attrs[score_idx].scale, (int8_t *)score_sum, score_sum_zp, score_sum_scale,
-                                grid_h, grid_w, stride, dfl_len, filterBoxes, objProbs, classId, conf_threshold);
+                                grid_h, grid_w, stride, dfl_len, num_classes, filterBoxes, objProbs, classId, conf_threshold);
         }
         else
         {
@@ -586,24 +601,26 @@ int post_process(rknn_app_context_t *app_ctx, void *outputs, letterbox_t *letter
             validCount += process_u8((uint8_t *)_outputs[box_idx].buf, app_ctx->output_attrs[box_idx].zp, app_ctx->output_attrs[box_idx].scale,
                                      (uint8_t *)_outputs[score_idx].buf, app_ctx->output_attrs[score_idx].zp, app_ctx->output_attrs[score_idx].scale,
                                      (uint8_t *)score_sum, score_sum_zp, score_sum_scale,
-                                     grid_h, grid_w, stride, dfl_len,
+                                     grid_h, grid_w, stride, dfl_len, num_classes,
                                      filterBoxes, objProbs, classId, conf_threshold);
 #else
             validCount += process_i8((int8_t *)_outputs[box_idx].buf, app_ctx->output_attrs[box_idx].zp, app_ctx->output_attrs[box_idx].scale,
                                      (int8_t *)_outputs[score_idx].buf, app_ctx->output_attrs[score_idx].zp, app_ctx->output_attrs[score_idx].scale,
                                      (int8_t *)score_sum, score_sum_zp, score_sum_scale,
-                                     grid_h, grid_w, stride, dfl_len, 
+                                     grid_h, grid_w, stride, dfl_len, num_classes,
                                      filterBoxes, objProbs, classId, conf_threshold);
 #endif
         }
         else
         {
             validCount += process_fp32((float *)_outputs[box_idx].buf, (float *)_outputs[score_idx].buf, (float *)score_sum,
-                                       grid_h, grid_w, stride, dfl_len, 
+                                       grid_h, grid_w, stride, dfl_len, num_classes,
                                        filterBoxes, objProbs, classId, conf_threshold);
         }
 #endif
     }
+
+    } // end else (multi-branch)
 
     // no object detect
     if (validCount <= 0)
@@ -655,10 +672,14 @@ int post_process(rknn_app_context_t *app_ctx, void *outputs, letterbox_t *letter
     return 0;
 }
 
-int init_post_process()
+int init_post_process(int num_classes)
 {
     int ret = 0;
-    ret = loadLabelName(LABEL_NALE_TXT_PATH, labels);
+    if (num_classes <= 0 || num_classes > OBJ_CLASS_NUM_MAX)
+    {
+        num_classes = OBJ_CLASS_NUM;
+    }
+    ret = loadLabelName(LABEL_NALE_TXT_PATH, labels, num_classes);
     if (ret < 0)
     {
         printf("Load %s failed!\n", LABEL_NALE_TXT_PATH);
@@ -670,7 +691,7 @@ int init_post_process()
 char *coco_cls_to_name(int cls_id)
 {
 
-    if (cls_id >= OBJ_CLASS_NUM)
+    if (cls_id >= OBJ_CLASS_NUM_MAX)
     {
         return "null";
     }
@@ -685,7 +706,7 @@ char *coco_cls_to_name(int cls_id)
 
 void deinit_post_process()
 {
-    for (int i = 0; i < OBJ_CLASS_NUM; i++)
+    for (int i = 0; i < OBJ_CLASS_NUM_MAX; i++)
     {
         if (labels[i] != nullptr)
         {

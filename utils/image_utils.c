@@ -677,11 +677,16 @@ int convert_image(image_buffer_t* src_img, image_buffer_t* dst_img, image_rect_t
     printf("convert image use cpu\n");
     ret = convert_image_cpu(src_img, dst_img, src_box, dst_box, color);
 #else
+    // RGB images from cv::Mat virtual memory frequently fail RGA wrapbuffer
+    // on RK3588, so use CPU path directly for RGB virtual buffers.
+    int rgb_virtual = (src_img->format == IMAGE_FORMAT_RGB888 &&
+                       src_img->fd <= 0 &&
+                       src_img->virt_addr != NULL);
 
 #if defined(RV1106_1103) 
-    if(src_img->width % 4 == 0 && dst_img->width % 4 == 0) {
+    if (!rgb_virtual && src_img->width % 4 == 0 && dst_img->width % 4 == 0) {
 #else
-    if(src_img->width % 16 == 0 && dst_img->width % 16 == 0) {
+    if (!rgb_virtual && src_img->width % 16 == 0 && dst_img->width % 16 == 0) {
 #endif
         ret = convert_image_rga(src_img, dst_img, src_box, dst_box, color);
         if (ret != 0) {
@@ -689,7 +694,7 @@ int convert_image(image_buffer_t* src_img, image_buffer_t* dst_img, image_rect_t
             ret = convert_image_cpu(src_img, dst_img, src_box, dst_box, color);
         }
     } else {
-        printf("src width is not 4/16-aligned, convert image use cpu\n");
+        printf("src width is not 4/16-aligned or RGB virtual buffer, convert image use cpu\n");
         ret = convert_image_cpu(src_img, dst_img, src_box, dst_box, color);
     }
 #endif

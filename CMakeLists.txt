@@ -24,6 +24,7 @@ set(LIBRKNNRT ${RKNN_API_PATH}/${CMAKE_SYSTEM_NAME}/${LIB_ARCH}/librknnrt.so)
 
 # 包含头文件
 include_directories(
+    ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${RKNN_API_INCLUDE_PATH}
     ${OpenCV_AIP_INCLUDE}
@@ -36,6 +37,8 @@ include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/src/rknn
     ${CMAKE_CURRENT_SOURCE_DIR}/src/rknn/yolov8_pose
     ${CMAKE_CURRENT_SOURCE_DIR}/src/rknn/yolo26
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/rknn/yolov5
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/algo
 )
 
 # 包含 3rdparty 和 utils 子目录
@@ -67,10 +70,10 @@ link_directories(
     mpp_libs
     /opt/app/slave/lib
 )
-add_executable(yolov8_stream_img
-    src/yolov8_stream_img.cpp
+add_executable(rknn_yolo_stream
+    src/rknn_yolo_stream.cpp
     src/postprocess.cc
-	src/rknpu2/yolov8.cc
+    src/rknpu2/yolov8.cc
     src/task/ThreadPool.cpp
     src/task/yolo_model.cpp
     src/rkmedia/utils/mpp_decoder.cpp
@@ -82,12 +85,17 @@ add_executable(yolov8_stream_img
     src/rknn/yolov8_pose/yolov8_pose_postprocess.cc
     src/rknn/yolo26/yolo26.cc
     src/rknn/yolo26/yolo26_postprocess.cc
-    src/alarm/SerialAlarm.cc
+    src/rknn/yolov5/yolov5.cc
+    src/rknn/yolov5/yolov5_postprocess.cc
     src/rknn/clip_text/clip_text.cc
     src/rknn/tokenizer/clip_tokenizer.cpp
+    src/algo/algorithm.cpp
+    src/algo/algo_logger.cpp
+    src/algo/alert_uploader.cpp
+    src/algo/algo_engine.cpp
 )
 
-target_link_libraries(yolov8_stream_img
+target_link_libraries(rknn_yolo_stream
     imageutils
     fileutils
     imagedrawing
@@ -99,6 +107,33 @@ target_link_libraries(yolov8_stream_img
     mk_api # 在mpp_libs下，ZLMediaKit API库
 )
 
+# 单张图片多模型推理测试工具
+add_executable(test_image
+    tools/test_image.cpp
+    src/task/yolo_model.cpp
+    src/postprocess.cc
+    src/rknpu2/yolov8.cc
+    src/conf/Config.cpp
+    src/rknn/yolo_world/yolo_world.cc
+    src/rknn/yolo_world/yolo_world_postprocess.cc
+    src/rknn/yolov8_pose/yolov8_pose.cc
+    src/rknn/yolov8_pose/yolov8_pose_postprocess.cc
+    src/rknn/yolo26/yolo26.cc
+    src/rknn/yolo26/yolo26_postprocess.cc
+    src/rknn/yolov5/yolov5.cc
+    src/rknn/yolov5/yolov5_postprocess.cc
+    src/rknn/clip_text/clip_text.cc
+    src/rknn/tokenizer/clip_tokenizer.cpp
+)
+
+target_link_libraries(test_image
+    imageutils
+    fileutils
+    imagedrawing
+    ${LIBRKNNRT}
+    dl
+    ${OpenCV_LIBS}
+)
 
 # 仅对 Linux 系统进行线程链接
 if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
